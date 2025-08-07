@@ -1,19 +1,57 @@
 from fpdf import FPDF
+import json
+import os
+import requests
+import io
+
+CONFIG_FILE = "config.json"
+
+def load_config():
+    """Loads configuration from a JSON file."""
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, 'r') as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return {}
+    return {}
 
 class PDF(FPDF):
     def header(self):
-        # --- CONFIGURACIÓN DE LA EMPRESA ---
-        # Modifica las siguientes líneas con los datos de tu empresa
-        company_name = "Tu Empresa Constructora"
-        company_address = "Calle Falsa 123, Ciudad"
-        company_phone = "+1 234 567 890"
-        # ------------------------------------
+        config = load_config()
+        company_name = config.get("company_name", "Tu Empresa")
+        address = config.get("address", "Tu Dirección")
+        phone = config.get("phone", "Tu Teléfono")
+        logo_url = config.get("logo_url", "")
 
+        # --- Logo ---
+        if logo_url:
+            try:
+                response = requests.get(logo_url, timeout=5)
+                response.raise_for_status() # Raise an exception for bad status codes
+
+                # Use BytesIO to handle the image in memory
+                image_bytes = io.BytesIO(response.content)
+
+                # The name parameter is used by FPDF to determine the image type
+                self.image(image_bytes, x=10, y=8, w=33, link=logo_url, type='PNG' if '.png' in logo_url.lower() else 'JPG')
+
+                # Move cursor to the right of the logo
+                self.set_x(45)
+            except Exception as e:
+                # If logo fails, just print a warning and continue without it
+                print(f"Warning: Could not load logo from URL. Error: {e}")
+                self.set_x(10)
+        else:
+            self.set_x(10)
+
+        # --- Company Info ---
         self.set_font('Arial', 'B', 15)
         self.cell(0, 10, company_name, 0, 1, 'L')
+        self.set_x(self.get_x() if not logo_url else 45) # Indent if logo is present
         self.set_font('Arial', '', 10)
-        self.cell(0, 10, f'{company_address} | {company_phone}', 0, 1, 'L')
-        self.ln(10)
+        self.cell(0, 7, f'{address} | {phone}', 0, 1, 'L')
+        self.ln(15)
 
     def footer(self):
         self.set_y(-15)
@@ -34,7 +72,7 @@ def create_quote_pdf(quote_details, client_details, items_df):
     pdf.cell(0, 10, f"Cotización #{quote_details['quote_id']}", 0, 1, 'R')
     pdf.set_font('Arial', '', 12)
     pdf.cell(0, 10, f"Fecha: {quote_details['quote_date']}", 0, 1, 'R')
-    pdf.ln(10)
+    pdf.ln(5)
 
     # --- Client Details ---
     pdf.set_font('Arial', 'B', 12)
@@ -74,10 +112,8 @@ def create_quote_pdf(quote_details, client_details, items_df):
     # --- Totals ---
     pdf.ln(10)
 
-    # Calculate totals based on quote details
     discount = quote_details.get('discount', 0)
     total = quote_details.get('total_amount', 0)
-    # Infer IVA from subtotal, total, and discount
     iva = total - subtotal + discount
 
     total_items = [
@@ -92,12 +128,18 @@ def create_quote_pdf(quote_details, client_details, items_df):
         pdf.cell(130, 8, label, 0, 0, 'R')
         pdf.cell(60, 8, value, 0, 1, 'R')
 
-    # --- Notes ---
+    # --- Notes & Payment Method ---
     pdf.ln(10)
     pdf.set_font('Arial', 'B', 12)
     pdf.cell(0, 10, "Notas Adicionales:", 0, 1)
     pdf.set_font('Arial', '', 12)
-    pdf.multi_cell(0, 10, quote_details['notes'])
+    pdf.multi_cell(0, 10, str(quote_details.get('notes', '')))
+
+    if 'payment_method' in quote_details and quote_details['payment_method']:
+        pdf.set_font('Arial', 'B', 12)
+        pdf.cell(0, 10, "Forma de Pago:", 0, 1)
+        pdf.set_font('Arial', '', 12)
+        pdf.multi_cell(0, 10, str(quote_details['payment_method']))
 
     # Return PDF as bytes
     return pdf.output(dest='S').encode('latin-1')

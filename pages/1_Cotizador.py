@@ -18,11 +18,11 @@ def load_data(file_path, columns):
     return pd.DataFrame(columns=columns)
 
 clients_df = load_data("data/clients.csv", ["client_id", "name", "company", "phone", "email"])
-quotes_df = load_data("data/quotes.csv", ["quote_id", "client_id", "quote_date", "total_amount", "discount", "notes", "status"])
+quotes_df = load_data("data/quotes.csv", ["quote_id", "client_id", "quote_date", "total_amount", "discount", "notes", "status", "payment_method"])
 quote_items_df = load_data("data/quote_items.csv", ["item_id", "quote_id", "description", "quantity", "unit_price"])
 
 # --- Initialize Session State for Quote Items ---
-if 'items' not in st.session_state:
+if 'items' not in st.session_state or not isinstance(st.session_state.items, pd.DataFrame):
     st.session_state.items = pd.DataFrame(columns=["Descripción", "Cantidad", "Precio Unitario"])
 
 # --- UI for Quote Creation ---
@@ -72,8 +72,13 @@ with st.form("quote_form"):
     with col3:
         apply_iva = st.checkbox("Aplicar IVA (16%)", value=True)
         discount = st.number_input("Descuento ($)", min_value=0.0, value=0.0, format="%.2f")
+        payment_method = st.selectbox(
+            "Forma de Pago",
+            options=["Transferencia Bancaria", "Efectivo", "Tarjeta de Crédito/Débito", "Otro"],
+            index=0
+        )
     with col4:
-        notes = st.text_area("Notas Adicionales", "Vigencia de la cotización: 15 días.")
+        notes = st.text_area("Notas Adicionales", "Vigencia de la cotización: 15 días. Precios sujetos a cambio sin previo aviso.")
 
     # --- Final Calculations ---
     iva = subtotal * 0.16 if apply_iva else 0
@@ -101,7 +106,8 @@ with st.form("quote_form"):
 
             new_quote = pd.DataFrame([{
                 "quote_id": new_quote_id, "client_id": client_id, "quote_date": quote_date.strftime("%Y-%m-%d"),
-                "total_amount": total, "discount": discount, "notes": notes, "status": "Borrador"
+                "total_amount": total, "discount": discount, "notes": notes, "status": "Borrador",
+                "payment_method": payment_method
             }])
             updated_quotes_df = pd.concat([quotes_df, new_quote], ignore_index=True)
             updated_quotes_df.to_csv("data/quotes.csv", index=False)

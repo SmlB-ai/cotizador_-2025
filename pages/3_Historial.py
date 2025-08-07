@@ -23,7 +23,7 @@ def save_data(df, file_path):
 
 # Load all data
 clients_df = load_data("data/clients.csv", ["client_id", "name", "company", "phone", "email"])
-quotes_df = load_data("data/quotes.csv", ["quote_id", "client_id", "quote_date", "total_amount", "discount", "notes", "status"])
+quotes_df = load_data("data/quotes.csv", ["quote_id", "client_id", "quote_date", "total_amount", "discount", "notes", "status", "payment_method"])
 quote_items_df = load_data("data/quote_items.csv", ["item_id", "quote_id", "description", "quantity", "unit_price"])
 
 # --- Main Logic ---
@@ -66,6 +66,8 @@ else:
             st.text(f"Fecha: {quote_details['quote_date']}")
             st.text(f"Monto Total: ${quote_details['total_amount']:,.2f}")
             st.text(f"Estado: {quote_details['status']}")
+            if pd.notna(quote_details.get('payment_method')):
+                st.text(f"Forma de Pago: {quote_details['payment_method']}")
             st.info(f"Notas: {quote_details['notes']}")
 
             st.subheader("Conceptos:")
