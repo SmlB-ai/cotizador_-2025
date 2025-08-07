@@ -11,19 +11,28 @@ st.title("👥 Gestión de Clientes")
 DATA_FILE = "data/clients.csv"
 
 def load_data():
-    """Loads client data from the CSV file."""
-    if os.path.exists(DATA_FILE):
+    """Loads client data from the CSV file. Adds a sample client if the file is empty."""
+    columns = ["client_id", "name", "company", "phone", "email"]
+    if os.path.exists(DATA_FILE) and os.path.getsize(DATA_FILE) > 0:
         try:
             df = pd.read_csv(DATA_FILE)
-            if df.empty:
-                # If file is empty, create it with headers
-                df = pd.DataFrame(columns=["client_id", "name", "company", "phone", "email"])
-        except pd.errors.EmptyDataError:
-             df = pd.DataFrame(columns=["client_id", "name", "company", "phone", "email"])
+        except (pd.errors.EmptyDataError, ValueError):
+            df = pd.DataFrame(columns=columns)
     else:
-        # If file doesn't exist, create it with headers
-        df = pd.DataFrame(columns=["client_id", "name", "company", "phone", "email"])
+        df = pd.DataFrame(columns=columns)
+
+    if df.empty:
+        # If no clients exist, add a sample client and save it.
+        sample_client = pd.DataFrame([{
+            "client_id": 1,
+            "name": "Cliente de Ejemplo",
+            "company": "Constructora XYZ",
+            "phone": "555-123-4567",
+            "email": "ejemplo@email.com"
+        }])
+        df = pd.concat([df, sample_client], ignore_index=True)
         df.to_csv(DATA_FILE, index=False)
+
     return df
 
 clients_df = load_data()

@@ -43,8 +43,14 @@ with col2:
 st.header("Conceptos")
 
 # --- Interactive Data Editor for Quote Items (Outside Form) ---
-# Use a copy to prevent direct mutation issues with data_editor
-items_df = st.session_state.items.copy()
+# Self-healing mechanism for the session state
+try:
+    # Use a copy to prevent direct mutation issues with data_editor
+    items_df = st.session_state.items.copy()
+except AttributeError:
+    # If state is corrupted (e.g., becomes a function), reset and rerun
+    st.session_state.items = pd.DataFrame(columns=["Descripción", "Cantidad", "Precio Unitario"])
+    st.rerun()
 
 edited_items = st.data_editor(
     items_df,
