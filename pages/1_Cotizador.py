@@ -19,11 +19,12 @@ def load_data(file_path, columns):
 
 clients_df = load_data("data/clients.csv", ["client_id", "name", "company", "phone", "email"])
 quotes_df = load_data("data/quotes.csv", ["quote_id", "client_id", "quote_date", "total_amount", "discount", "notes", "status", "payment_method"])
-quote_items_df = load_data("data/quote_items.csv", ["item_id", "quote_id", "description", "quantity", "unit_price"])
+quote_items_df = load_data("data/quote_items.csv", ["item_id", "quote_id", "description", "quantity", "unit_price", "discount_percent"])
 
 # --- Initialize Session State for Quote Items ---
 if 'items' not in st.session_state or not isinstance(st.session_state.items, pd.DataFrame):
-    st.session_state.items = pd.DataFrame(columns=["Descripción", "Cantidad", "Precio Unitario"])
+    # Add "Descuento (%)" column for per-item discounts
+    st.session_state.items = pd.DataFrame(columns=["Descripción", "Cantidad", "Precio Unitario", "Descuento (%)"])
 
 # --- UI for Quote Creation ---
 if clients_df.empty:
@@ -43,23 +44,20 @@ with col2:
 st.header("Conceptos")
 
 # --- Interactive Data Editor for Quote Items (Outside Form) ---
-# Self-healing mechanism for the session state
-try:
-    # Use a copy to prevent direct mutation issues with data_editor
-    items_df = st.session_state.items.copy()
-except AttributeError:
-    # If state is corrupted (e.g., becomes a function), reset and rerun
-    st.session_state.items = pd.DataFrame(columns=["Descripción", "Cantidad", "Precio Unitario"])
-    st.rerun()
+# Robustly ensure session state is a DataFrame before use
+if 'items' not in st.session_state or not isinstance(st.session_state.items, pd.DataFrame):
+    st.session_state.items = pd.DataFrame(columns=["Descripción", "Cantidad", "Precio Unitario", "Descuento (%)"])
 
 edited_items = st.data_editor(
-    items_df,
+    st.session_state.items,
     num_rows="dynamic",
     use_container_width=True,
     column_config={
         "Descripción": st.column_config.TextColumn(required=True),
         "Cantidad": st.column_config.NumberColumn(required=True, min_value=0.01, format="%.2f"),
         "Precio Unitario": st.column_config.NumberColumn(required=True, min_value=0.0, format="$%.2f"),
+        "Descuento (%)": st.column_config.NumberColumn(required=False, min_value=0, max_value=100, default=0, format="%d%%"),
+        "Total": st.column_config.NumberColumn(disabled=True, format="$%.2f"),
     },
     key="data_editor"
 )
@@ -68,7 +66,14 @@ edited_items = st.data_editor(
 st.session_state.items = edited_items
 
 # --- Calculate and Display Totals (Outside Form) ---
-st.session_state.items['Total'] = st.session_state.items['Cantidad'] * st.session_state.items['Precio Unitario']
+# Fill NaN in discount with 0 to prevent errors
+st.session_state.items["Descuento (%)"] = st.session_state.items["Descuento (%)"].fillna(0)
+# Calculate the total for each item, applying the discount
+st.session_state.items['Total'] = (
+    st.session_state.items['Cantidad'] *
+    st.session_state.items['Precio Unitario'] *
+    (1 - st.session_state.items['Descuento (%)'] / 100)
+)
 subtotal = st.session_state.items['Total'].sum()
 
 st.header("Resumen y Opciones Finales")
@@ -120,12 +125,19 @@ with st.form("quote_form"):
 
             items_to_save = st.session_state.items.copy()
             items_to_save["quote_id"] = new_quote_id
-            items_to_save.rename(columns={"Descripción": "description", "Cantidad": "quantity", "Precio Unitario": "unit_price"}, inplace=True)
+            items_to_save.rename(columns={
+                "Descripción": "description",
+                "Cantidad": "quantity",
+                "Precio Unitario": "unit_price",
+                "Descuento (%)": "discount_percent"
+            }, inplace=True)
 
             last_item_id = (quote_items_df["item_id"].max()) if not quote_items_df.empty else 0
             items_to_save["item_id"] = range(last_item_id + 1, last_item_id + 1 + len(items_to_save))
 
-            updated_items_df = pd.concat([quote_items_df, items_to_save[["item_id", "quote_id", "description", "quantity", "unit_price"]]], ignore_index=True)
+            # Ensure all columns are present before saving
+            final_cols = ["item_id", "quote_id", "description", "quantity", "unit_price", "discount_percent"]
+            updated_items_df = pd.concat([quote_items_df, items_to_save[final_cols]], ignore_index=True)
             updated_items_df.to_csv("data/quote_items.csv", index=False)
 
             st.success(f"Cotización #{new_quote_id} guardada como borrador.")

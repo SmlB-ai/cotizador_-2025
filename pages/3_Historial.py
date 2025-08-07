@@ -24,7 +24,7 @@ def save_data(df, file_path):
 # Load all data
 clients_df = load_data("data/clients.csv", ["client_id", "name", "company", "phone", "email"])
 quotes_df = load_data("data/quotes.csv", ["quote_id", "client_id", "quote_date", "total_amount", "discount", "notes", "status", "payment_method"])
-quote_items_df = load_data("data/quote_items.csv", ["item_id", "quote_id", "description", "quantity", "unit_price"])
+quote_items_df = load_data("data/quote_items.csv", ["item_id", "quote_id", "description", "quantity", "unit_price", "discount_percent"])
 
 # --- Main Logic ---
 if quotes_df.empty:
@@ -71,7 +71,11 @@ else:
             st.info(f"Notas: {quote_details['notes']}")
 
             st.subheader("Conceptos:")
-            st.table(items[['description', 'quantity', 'unit_price']])
+            # Display discount column if it exists and has non-zero values
+            if 'discount_percent' in items.columns and items['discount_percent'].sum() > 0:
+                st.table(items[['description', 'quantity', 'unit_price', 'discount_percent']])
+            else:
+                st.table(items[['description', 'quantity', 'unit_price']])
 
             # --- Action Buttons ---
             st.subheader("Acciones")

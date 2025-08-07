@@ -89,8 +89,9 @@ def create_quote_pdf(quote_details, client_details, items_df):
 
     # --- Items Table ---
     pdf.set_font('Arial', 'B', 11)
-    col_widths = [100, 30, 30, 30]
-    headers = ['Descripción', 'Cantidad', 'P. Unitario', 'Total']
+    # Adjust column widths for the new "Dto." column
+    col_widths = [85, 25, 30, 25, 25]
+    headers = ['Descripción', 'Cantidad', 'P. Unitario', 'Dto. (%)', 'Total']
     for i, header in enumerate(headers):
         pdf.cell(col_widths[i], 10, header, 1, 0, 'C')
     pdf.ln()
