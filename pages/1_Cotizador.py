@@ -9,7 +9,6 @@ st.title("📝 Nueva Cotización")
 
 # --- Data Loading Functions ---
 def load_data(file_path, columns):
-    """Generic function to load data from a CSV file."""
     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
         try:
             return pd.read_csv(file_path)
@@ -21,35 +20,29 @@ clients_df = load_data("data/clients.csv", ["client_id", "name", "company", "pho
 quotes_df = load_data("data/quotes.csv", ["quote_id", "client_id", "quote_date", "total_amount", "discount", "notes", "status", "payment_method"])
 quote_items_df = load_data("data/quote_items.csv", ["item_id", "quote_id", "description", "quantity", "unit_price", "discount_percent"])
 
-# --- Initialize Session State for Quote Items ---
+# --- State Initialization ---
 if 'items' not in st.session_state or not isinstance(st.session_state.items, pd.DataFrame):
-    # Add "Descuento (%)" column for per-item discounts
     st.session_state.items = pd.DataFrame(columns=["Descripción", "Cantidad", "Precio Unitario", "Descuento (%)"])
 
-# --- UI for Quote Creation ---
+# --- UI ---
 if clients_df.empty:
     st.warning("No hay clientes registrados. Por favor, agregue un cliente en la página de 'Clientes' antes de crear una cotización.")
     st.stop()
 
 st.header("Detalles de la Cotización")
-
-# --- Client and Date Selection (Outside Form) ---
 col1, col2 = st.columns(2)
-with col1:
-    client_list = [f"{row['name']} ({row.get('company', 'N/A')})" for index, row in clients_df.iterrows()]
-    selected_client_str = st.selectbox("Seleccionar Cliente*", client_list, index=None, placeholder="Elige un cliente...")
-with col2:
-    quote_date = st.date_input("Fecha de Cotización", datetime.now())
+selected_client_str = col1.selectbox("Seleccionar Cliente*", [f"{row['name']} ({row.get('company', 'N/A')})" for _, row in clients_df.iterrows()], index=None, placeholder="Elige un cliente...")
+quote_date = col2.date_input("Fecha de Cotización", datetime.now())
 
 st.header("Conceptos")
 
-# --- Interactive Data Editor for Quote Items (Outside Form) ---
-# Robustly ensure session state is a DataFrame before use
-if 'items' not in st.session_state or not isinstance(st.session_state.items, pd.DataFrame):
-    st.session_state.items = pd.DataFrame(columns=["Descripción", "Cantidad", "Precio Unitario", "Descuento (%)"])
+# --- Advanced State Management for Data Editor ---
+# 1. Create a local copy of the state
+df_copy = st.session_state.items.copy()
 
-edited_items = st.data_editor(
-    st.session_state.items,
+# 2. Pass the copy to the editor
+edited_df = st.data_editor(
+    df_copy,
     num_rows="dynamic",
     use_container_width=True,
     column_config={
@@ -62,86 +55,66 @@ edited_items = st.data_editor(
     key="data_editor"
 )
 
-# --- Update session state with the edited data ---
-st.session_state.items = edited_items
+# 3. Compare and update state only if there's a change
+if not edited_df.equals(st.session_state.items):
+    st.session_state.items = edited_df
+    st.rerun()
 
-# --- Calculate and Display Totals (Outside Form) ---
-# Fill NaN in discount with 0 to prevent errors
-st.session_state.items["Descuento (%)"] = st.session_state.items["Descuento (%)"].fillna(0)
-# Calculate the total for each item, applying the discount
-st.session_state.items['Total'] = (
-    st.session_state.items['Cantidad'] *
-    st.session_state.items['Precio Unitario'] *
-    (1 - st.session_state.items['Descuento (%)'] / 100)
+# --- Calculations (will run on a clean state) ---
+current_items = st.session_state.items.copy()
+current_items["Descuento (%)"] = current_items["Descuento (%)"].fillna(0)
+current_items['Total'] = (
+    current_items['Cantidad'].fillna(0) *
+    current_items['Precio Unitario'].fillna(0) *
+    (1 - current_items['Descuento (%)'].fillna(0) / 100)
 )
-subtotal = st.session_state.items['Total'].sum()
+subtotal = current_items['Total'].sum()
 
+# --- Final Options Form ---
 st.header("Resumen y Opciones Finales")
-
 with st.form("quote_form"):
     col3, col4 = st.columns(2)
     with col3:
         apply_iva = st.checkbox("Aplicar IVA (16%)", value=True)
-        discount = st.number_input("Descuento ($)", min_value=0.0, value=0.0, format="%.2f")
-        payment_method = st.selectbox(
-            "Forma de Pago",
-            options=["Transferencia Bancaria", "Efectivo", "Tarjeta de Crédito/Débito", "Otro"],
-            index=0
-        )
+        discount = st.number_input("Descuento General ($)", min_value=0.0, value=0.0, format="%.2f")
+        payment_method = st.selectbox("Forma de Pago", ["Transferencia Bancaria", "Efectivo", "Tarjeta de Crédito/Débito", "Otro"], index=0)
     with col4:
         notes = st.text_area("Notas Adicionales", "Vigencia de la cotización: 15 días. Precios sujetos a cambio sin previo aviso.")
 
-    # --- Final Calculations ---
     iva = subtotal * 0.16 if apply_iva else 0
     total = subtotal + iva - discount
 
-    # --- Display Totals in Form ---
     st.metric("Subtotal", f"${subtotal:,.2f}")
     st.metric("IVA (16%)", f"${iva:,.2f}")
     st.metric("Total Final", f"${total:,.2f}")
 
-    # --- Form Submission ---
     submitted = st.form_submit_button("Guardar Cotización", type="primary")
     if submitted:
-        # --- Validation ---
         if not selected_client_str:
             st.error("Error: Debes seleccionar un cliente.")
-        elif st.session_state.items.empty or st.session_state.items["Descripción"].isnull().all():
+        elif current_items.empty or current_items["Descripción"].isnull().all():
             st.error("Error: Debes agregar al menos un concepto a la cotización.")
         else:
-            # --- Save Logic ---
             client_row = clients_df[clients_df.apply(lambda row: f"{row['name']} ({row.get('company', 'N/A')})" == selected_client_str, axis=1)]
             client_id = client_row.iloc[0]["client_id"]
 
             new_quote_id = (quotes_df["quote_id"].max() + 1) if not quotes_df.empty else 1
 
-            new_quote = pd.DataFrame([{
-                "quote_id": new_quote_id, "client_id": client_id, "quote_date": quote_date.strftime("%Y-%m-%d"),
-                "total_amount": total, "discount": discount, "notes": notes, "status": "Borrador",
-                "payment_method": payment_method
-            }])
+            new_quote = pd.DataFrame([{"quote_id": new_quote_id, "client_id": client_id, "quote_date": quote_date.strftime("%Y-%m-%d"), "total_amount": total, "discount": discount, "notes": notes, "status": "Borrador", "payment_method": payment_method}])
             updated_quotes_df = pd.concat([quotes_df, new_quote], ignore_index=True)
             updated_quotes_df.to_csv("data/quotes.csv", index=False)
 
-            items_to_save = st.session_state.items.copy()
+            items_to_save = current_items.copy()
             items_to_save["quote_id"] = new_quote_id
-            items_to_save.rename(columns={
-                "Descripción": "description",
-                "Cantidad": "quantity",
-                "Precio Unitario": "unit_price",
-                "Descuento (%)": "discount_percent"
-            }, inplace=True)
+            items_to_save.rename(columns={"Descripción": "description", "Cantidad": "quantity", "Precio Unitario": "unit_price", "Descuento (%)": "discount_percent"}, inplace=True)
 
             last_item_id = (quote_items_df["item_id"].max()) if not quote_items_df.empty else 0
             items_to_save["item_id"] = range(last_item_id + 1, last_item_id + 1 + len(items_to_save))
 
-            # Ensure all columns are present before saving
             final_cols = ["item_id", "quote_id", "description", "quantity", "unit_price", "discount_percent"]
             updated_items_df = pd.concat([quote_items_df, items_to_save[final_cols]], ignore_index=True)
             updated_items_df.to_csv("data/quote_items.csv", index=False)
 
             st.success(f"Cotización #{new_quote_id} guardada como borrador.")
-
-            # Clear items from session state for the next quote
             del st.session_state.items
             st.rerun()
