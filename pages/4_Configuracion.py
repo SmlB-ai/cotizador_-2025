@@ -1,69 +1,60 @@
+"""
+Página de Configuración de la Aplicación.
+
+Esta página permite al usuario configurar los datos de su empresa,
+que se utilizarán en otras partes de la aplicación, principalmente
+en la generación de documentos PDF.
+
+Los datos se guardan en `config.json`.
+"""
 import streamlit as st
-import json
-import os
-
-CONFIG_FILE = "config.json"
-
-# --- Configuration Loading and Saving ---
-def load_config():
-    """Loads configuration from a JSON file."""
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f:
-            try:
-                return json.load(f)
-            except json.JSONDecodeError:
-                return {} # Return empty dict if file is empty or corrupt
-    return {}
-
-def save_config(config_data):
-    """Saves configuration to a JSON file."""
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config_data, f, indent=4)
+import data_manager
 
 # --- Page Configuration ---
-st.set_page_config(page_title="Configuración", page_icon="⚙️")
+st.set_page_config(page_title="Configuración", page_icon="⚙️", layout="wide")
 st.title("⚙️ Configuración de la Empresa")
+st.markdown("Aquí puedes configurar los datos de tu empresa que aparecerán en las cotizaciones en PDF.")
+st.markdown("---")
 
-st.info("Aquí puedes configurar los datos de tu empresa que aparecerán en las cotizaciones en PDF.")
-
-# Load existing config
-config = load_config()
+# --- Load existing config ---
+config = data_manager.load_config()
 
 # --- UI for Configuration ---
-company_name = st.text_input(
-    "Nombre de la Empresa",
-    value=config.get("company_name", "Tu Empresa Constructora")
-)
-address = st.text_input(
-    "Dirección",
-    value=config.get("address", "Calle Falsa 123, Ciudad")
-)
-phone = st.text_input(
-    "Teléfono / Contacto",
-    value=config.get("phone", "+1 234 567 890")
-)
-logo_url = st.text_input(
-    "URL del Logo (Opcional)",
-    value=config.get("logo_url", ""),
-    help="Pega aquí un enlace directo a una imagen (ej. https://.../logo.png)"
-)
+# Se utilizan contenedores para agrupar lógicamente los campos.
+with st.container(border=True):
+    st.subheader("Información de la Empresa")
+    company_name = st.text_input("Nombre de la Empresa", value=config.get("company_name", ""))
+    address = st.text_input("Dirección", value=config.get("address", ""))
+    phone = st.text_input("Teléfono / Contacto", value=config.get("phone", ""))
+    tax_id = st.text_input("ID Fiscal (RFC, NIF, etc.)", value=config.get("tax_id", ""))
 
-if st.button("Guardar Configuración", type="primary"):
+with st.container(border=True):
+    st.subheader("Logo y Datos Bancarios")
+    logo_url = st.text_input(
+        "URL del Logo (Opcional)",
+        value=config.get("logo_url", ""),
+        help="Pega aquí un enlace directo a una imagen (ej. https://.../logo.png)"
+    )
+    if logo_url:
+        st.image(logo_url, width=200)
+
+    bank_details = st.text_area(
+        "Información de Pago (Opcional)",
+        value=config.get("bank_details", ""),
+        help="Escribe aquí tus datos bancarios para transferencias. Aparecerán en el PDF."
+    )
+
+# --- Save Button ---
+if st.button("💾 Guardar Configuración", type="primary", use_container_width=True):
+    # Se recogen todos los valores y se guardan en el archivo de configuración.
     new_config = {
         "company_name": company_name,
         "address": address,
         "phone": phone,
-        "logo_url": logo_url
+        "tax_id": tax_id,
+        "logo_url": logo_url,
+        "bank_details": bank_details
     }
-    save_config(new_config)
+    data_manager.save_config(new_config)
     st.success("¡Configuración guardada con éxito!")
-
-# --- Preview Section ---
-st.header("Vista Previa del Encabezado del PDF")
-st.markdown(f"**{company_name}**")
-st.markdown(f"{address} | {phone}")
-if logo_url:
-    st.markdown("**Logo:**")
-    st.image(logo_url, width=200)
-else:
-    st.markdown("_(No se ha proporcionado un logo)_")
+    st.balloons()
